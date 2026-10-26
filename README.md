@@ -12,7 +12,7 @@ A Laravel microservice that writes short, customer-friendly email templates. You
 ## Setup
 
 ```bash
-git clone <repo-url> email-template-service
+git clone https://github.com/developerkausik/email-template-service.git
 cd email-template-service
 composer install
 cp .env.example .env
@@ -24,7 +24,7 @@ Then set the AI options in `.env`:
 | Variable | Default | Purpose |
 |---|---|---|
 | `AI_DRIVER` | `claude` | `claude` calls the Anthropic API. `ollama` runs a local model, free and offline. `fake` returns a canned email without calling any model. |
-| `ANTHROPIC_API_KEY` | (empty) | Your key from [console.anthropic.com](https://console.anthropic.com). Required when `AI_DRIVER=claude`. |
+| `ANTHROPIC_API_KEY` | (empty) | Your Claude API key, starting with `sk-ant-`. Required when `AI_DRIVER=claude`. See [Getting an API key](#getting-an-api-key). |
 | `AI_MODEL` | `claude-opus-5-5` | Any Claude model ID. |
 | `AI_EFFORT` | `low` | How much the model reasons before answering (`low`, `medium`, `high`). |
 | `AI_MAX_TOKENS` | `2048` | Output token limit per request. |
@@ -36,12 +36,22 @@ Then set the AI options in `.env`:
 
 The API key is read only in [`config/ai.php`](config/ai.php); application code reads `config('ai.*')` and never calls `env()`. `.env` is gitignored, and `.env.example` holds the variable names without values. If the key is missing, the API returns a clear 503 rather than failing on the first AI call.
 
+### Getting an API key
+
+1. Sign in to the Claude Console and open [platform.claude.com/settings/keys](https://platform.claude.com/settings/keys). This is separate from claude.ai, and a claude.ai subscription does not include API usage.
+2. Click **Create key**. Set **Linked account** to yourself, and select a **workspace** (for example Default). A key without a workspace needs an extra header this project does not send.
+3. Add credits under **Settings → Billing**. Each request costs roughly $0.005–0.02 with the default model.
+4. Copy the key (it is shown only once) into `ANTHROPIC_API_KEY` in `.env`.
+
 ### Running without an API key (Ollama)
 
 1. Install [Ollama](https://ollama.com/download) and download a model: `ollama pull llama3.2`
 2. In `.env`, set `AI_DRIVER=ollama`.
 
-Nothing else changes: the same prompt and JSON schema are sent to the local model, and calls are logged in the same way. A small local model writes less polished emails and follows the length and placeholder rules less reliably than Claude, so use it to try the service for free, not as a measure of quality.
+Nothing else changes: the same prompt and JSON schema are sent to the local model, and calls are logged in the same way.
+
+- **First request.** It loads the model into memory and can take a minute or two; it may even hit `OLLAMA_TIMEOUT` and return a 504. After that, emails take 1–3 seconds on a laptop GPU.
+- **Quality.** A small model like llama3.2 (3B) writes less polished emails. In testing it usually wrote under 80 words, sometimes dropped the `[Your Name]` signature, and once returned an empty body, which the service rejects with a 502. Use it to try the service for free, not as a measure of quality. A larger model such as `qwen2.5:7b` follows the rules better if your machine can run it; set `OLLAMA_MODEL` to match.
 
 Run it:
 
@@ -71,7 +81,7 @@ curl -X POST http://127.0.0.1:8000/api/email-templates \
   -d '{"purpose": "Inform about a 2-day shipping delay", "recipient_name": "Priya", "tone": "apologetic"}'
 ```
 
-**Sample response `200 OK`**
+**Example response `200 OK`**
 
 ```json
 {
@@ -115,7 +125,14 @@ Each request has automatic checks:
 - that `X-Response-Time` is present;
 - two of the prompt's rules: the body greets the recipient by name, and is 80–150 words long.
 
-Import the file into Postman, or run it from the command line:
+**In Postman:**
+1. Click **Import** and select the `.json` file.
+2. If the service is not on port 8000, change the collection's `baseUrl` variable.
+3. Send a request and see the **Test Results** tab, or use **Run collection** to run them all. **View → Show Postman Console** prints the AI latency for each request.
+
+Import into a regular workspace. A workspace linked to a local folder converts the file into its own YAML format and removes the `.json`.
+
+**From the command line** (needs Node.js):
 
 ```bash
 npx newman run postman/email-template-service.postman_collection.json
@@ -126,6 +143,8 @@ The prompt-rule checks measure the model's output, not the service. With Ollama'
 ## Response-time logs
 
 Each AI call writes one line to `storage/logs/ai.log`. The service takes a timestamp with `hrtime(true)` before and after the call and logs the difference in milliseconds ([`app/Services/EmailTemplateService.php`](app/Services/EmailTemplateService.php)).
+
+Example lines:
 
 ```
 [2026-10-26 06:31:41] local.INFO: ai.call {"status":"ok","model":"claude-opus-5-5","tone":"apologetic","latency_ms":2140,"input_tokens":412,"output_tokens":187} {"request_id":"1db0dc60-715f-4b1a-9125-b374a52959b9"}

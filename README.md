@@ -1,11 +1,14 @@
 # Email Template Service
 
-A Laravel microservice that writes short, customer-friendly email templates. You send a purpose, a recipient name and a tone; an AI model (Anthropic's Claude) returns a subject line and an email body ready for a staff member to review and send. Each AI call is logged with its response time.
+A Laravel microservice that writes short, customer-friendly email templates. You send a purpose, a recipient name and a tone; an AI model returns a subject line and an email body ready for a staff member to review and send. Each AI call is logged with its response time.
+
+By default it uses a free local model through [Ollama](https://ollama.com), so it runs without an API key. Change one line in `.env` to use Anthropic's Claude instead.
 
 ## Tech stack
 
 - PHP 8.2+, Laravel 12
-- [Anthropic PHP SDK](https://github.com/anthropics/anthropic-sdk-php) (`anthropic-ai/sdk`)
+- [Ollama](https://ollama.com) with llama3.2 (default model, local)
+- [Anthropic PHP SDK](https://github.com/anthropics/anthropic-sdk-php) (`anthropic-ai/sdk`) for Claude (optional)
 - PHPUnit for tests
 - No database
 
@@ -19,41 +22,49 @@ cp .env.example .env
 php artisan key:generate
 ```
 
-Then set the AI options in `.env`:
+### Set up the model (Ollama, default)
+
+1. Install [Ollama](https://ollama.com/download) and download the model: `ollama pull llama3.2`
+2. Make sure Ollama is running (on Windows and macOS it starts with the desktop app).
+
+`.env.example` already sets `AI_DRIVER=ollama`, so there is nothing else to configure.
+
+- **First request.** It loads the model into memory and can take a minute or two; it may even hit `OLLAMA_TIMEOUT` and return a 504. After that, emails take 1–3 seconds on a laptop GPU.
+- **Quality.** A small model like llama3.2 (3B) follows the prompt's rules less reliably than Claude. In testing it sometimes wrote under 80 words, sometimes dropped the `[Your Name]` signature, and once returned an empty body, which the service rejects with a 502. A larger model such as `qwen2.5:7b` follows the rules better if your machine can run it; pull it and set `OLLAMA_MODEL` to match.
+
+### Settings
+
+All AI options are in `.env`:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `AI_DRIVER` | `claude` | `claude` calls the Anthropic API. `ollama` runs a local model, free and offline. `fake` returns a canned email without calling any model. |
-| `ANTHROPIC_API_KEY` | (empty) | Your Claude API key, starting with `sk-ant-`. Required when `AI_DRIVER=claude`. See [Getting an API key](#getting-an-api-key). |
+| `AI_DRIVER` | `ollama` | `ollama` runs a local model, free and offline. `claude` calls the Anthropic API. `fake` returns a canned email without calling any model. |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server address. |
+| `OLLAMA_MODEL` | `llama3.2` | Any model you have pulled in Ollama. |
+| `OLLAMA_TIMEOUT` | `120` | Seconds to wait. Local models are slower, especially on the first call while the model loads. |
+| `ANTHROPIC_API_KEY` | (empty) | Your Claude API key, starting with `sk-ant-`. Required only when `AI_DRIVER=claude`. See [Using Claude instead](#using-claude-instead). |
 | `AI_MODEL` | `claude-opus-5-5` | Any Claude model ID. |
 | `AI_EFFORT` | `low` | How much the model reasons before answering (`low`, `medium`, `high`). |
 | `AI_MAX_TOKENS` | `2048` | Output token limit per request. |
 | `AI_TIMEOUT` | `30` | Seconds before an AI request is abandoned. |
 | `AI_MAX_RETRIES` | `2` | The SDK retries rate limits, timeouts and 5xx errors this many times. |
-| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server address. Used when `AI_DRIVER=ollama`. |
-| `OLLAMA_MODEL` | `llama3.2` | Any model you have pulled in Ollama. |
-| `OLLAMA_TIMEOUT` | `120` | Seconds to wait. Local models are slower, especially on the first call while the model loads. |
 
-The API key is read only in [`config/ai.php`](config/ai.php); application code reads `config('ai.*')` and never calls `env()`. `.env` is gitignored, and `.env.example` holds the variable names without values. If the key is missing, the API returns a clear 503 rather than failing on the first AI call.
+`AI_MODEL` through `AI_MAX_RETRIES` apply only to Claude.
 
-### Getting an API key
+Settings, including the API key, are read only in [`config/ai.php`](config/ai.php); application code reads `config('ai.*')` and never calls `env()`. `.env` is gitignored, and `.env.example` holds the variable names without secrets. If `AI_DRIVER=claude` and the key is missing, the API returns a clear 503 rather than failing on the first AI call.
+
+### Using Claude instead
+
+Claude follows the prompt's rules (length, placeholders, signature) more reliably. To use it:
 
 1. Sign in to the Claude Console and open [platform.claude.com/settings/keys](https://platform.claude.com/settings/keys). This is separate from claude.ai, and a claude.ai subscription does not include API usage.
 2. Click **Create key**. Set **Linked account** to yourself, and select a **workspace** (for example Default). A key without a workspace needs an extra header this project does not send.
-3. Add credits under **Settings → Billing**. Each request costs roughly $0.005–0.02 with the default model.
-4. Copy the key (it is shown only once) into `ANTHROPIC_API_KEY` in `.env`.
+3. Add credits under **Settings → Billing**. Each request costs roughly $0.005–0.02 with `claude-opus-5-5`.
+4. In `.env`, set `AI_DRIVER=claude` and paste the key (shown only once) into `ANTHROPIC_API_KEY`.
 
-### Running without an API key (Ollama)
+The prompt, JSON schema and logging are the same for both models; only the driver changes.
 
-1. Install [Ollama](https://ollama.com/download) and download a model: `ollama pull llama3.2`
-2. In `.env`, set `AI_DRIVER=ollama`.
-
-Nothing else changes: the same prompt and JSON schema are sent to the local model, and calls are logged in the same way.
-
-- **First request.** It loads the model into memory and can take a minute or two; it may even hit `OLLAMA_TIMEOUT` and return a 504. After that, emails take 1–3 seconds on a laptop GPU.
-- **Quality.** A small model like llama3.2 (3B) writes less polished emails. In testing it usually wrote under 80 words, sometimes dropped the `[Your Name]` signature, and once returned an empty body, which the service rejects with a 502. Use it to try the service for free, not as a measure of quality. A larger model such as `qwen2.5:7b` follows the rules better if your machine can run it; set `OLLAMA_MODEL` to match.
-
-Run it:
+### Run it
 
 ```bash
 php artisan serve
@@ -81,24 +92,24 @@ curl -X POST http://127.0.0.1:8000/api/email-templates \
   -d '{"purpose": "Inform about a 2-day shipping delay", "recipient_name": "Priya", "tone": "apologetic"}'
 ```
 
-**Example response `200 OK`**
+**Response `200 OK`** (real output from llama3.2 through Ollama)
 
 ```json
 {
-  "subject": "Your order is running two days late",
-  "body": "Hi Priya,\n\nI'm sorry to let you know that your order {{order_id}} has been delayed and will now arrive two days later than planned, on {{delivery_date}}. This is on us, and we understand it's frustrating when something you're waiting for doesn't arrive on time.\n\nYour order is packed and on its way, and you can follow its progress here: {{tracking_link}}. If the new date doesn't work for you, just reply to this email and we'll help you find the best option.\n\nThank you for your patience.\n\nBest regards,\n[Your Name]",
+  "subject": "Update on Your Order Delivery",
+  "body": "Dear Priya,\n\nWe regret to inform you that your order will be delayed by 2 business days due to an unexpected shipping issue. We take full responsibility for the inconvenience this may cause and are working diligently to resolve the matter as quickly as possible.\n\nOur team is processing a revised delivery schedule, and we will be in touch with you shortly to confirm the new estimated delivery date. If you have any questions or concerns, please don't hesitate to reach out to us.\n\nWe appreciate your patience and understanding in this matter.\n\nBest regards,\n[Your Name]",
   "tone": "apologetic",
   "meta": {
-    "model": "claude-opus-5-5",
-    "ai_latency_ms": 2140,
-    "request_id": "1db0dc60-715f-4b1a-9125-b374a52959b9"
+    "model": "llama3.2",
+    "ai_latency_ms": 2746,
+    "request_id": "aea89447-c6b5-42bd-8103-975e043610a7"
   }
 }
 ```
 
 Response headers:
 - `X-Request-Id`: the request ID. A client can send its own (8–64 letters, digits or dashes) and it will be reused.
-- `X-Response-Time`: total time spent handling the request, for example `2163ms`.
+- `X-Response-Time`: total time spent handling the request, for example `2756ms`.
 
 ### Errors
 
@@ -108,9 +119,9 @@ Every error is JSON with a `message`. AI failures also carry an `error` code.
 |---|---|---|
 | 422 | A field is missing or invalid | `{"message": "The tone must be one of: formal, friendly, apologetic, persuasive, neutral.", "errors": {"tone": ["..."]}}` |
 | 429 | More than 30 requests per minute from one client | `{"message": "Too Many Attempts."}` |
-| 502 | The AI provider returned an error or an unusable response, Ollama is not running, or the Ollama model is not installed | `{"message": "AI service returned an error.", "error": "ai_error"}` |
-| 503 | The AI provider is rate-limiting us (sends `Retry-After`), or no API key is configured | `{"message": "AI service is not configured. Set ANTHROPIC_API_KEY or use AI_DRIVER=fake.", "error": "ai_not_configured"}` |
-| 504 | The AI provider did not answer within `AI_TIMEOUT` | `{"message": "AI service timed out.", "error": "ai_timeout"}` |
+| 502 | Ollama is not running, the Ollama model is not installed, or the AI returned an error or an unusable response (such as an empty body) | `{"message": "Ollama model [llama3.2] is not installed. Run: ollama pull llama3.2", "error": "ai_model_not_found"}` |
+| 503 | Claude only: the API is rate-limiting us (sends `Retry-After`), or no API key is configured | `{"message": "AI service is not configured. Set ANTHROPIC_API_KEY, or use AI_DRIVER=ollama to run a local model.", "error": "ai_not_configured"}` |
+| 504 | The model did not answer within `OLLAMA_TIMEOUT` (Ollama) or `AI_TIMEOUT` (Claude) | `{"message": "AI service timed out.", "error": "ai_timeout"}` |
 
 ### Postman collection
 
@@ -138,17 +149,17 @@ Import into a regular workspace. A workspace linked to a local folder converts t
 npx newman run postman/email-template-service.postman_collection.json
 ```
 
-The prompt-rule checks measure the model's output, not the service. With Ollama's llama3.2, the emails usually come out under 80 words, so the word-count check fails.
+The prompt-rule checks measure the model's output, not the service. With the default llama3.2 model, some emails come out under 80 words, so the word-count check can fail; Claude follows the length rule more reliably.
 
 ## Response-time logs
 
 Each AI call writes one line to `storage/logs/ai.log`. The service takes a timestamp with `hrtime(true)` before and after the call and logs the difference in milliseconds ([`app/Services/EmailTemplateService.php`](app/Services/EmailTemplateService.php)).
 
-Example lines:
+Real lines from testing with llama3.2. The first is the response shown above; the second is a call where the model returned an empty body:
 
 ```
-[2026-10-26 06:31:41] local.INFO: ai.call {"status":"ok","model":"claude-opus-5-5","tone":"apologetic","latency_ms":2140,"input_tokens":412,"output_tokens":187} {"request_id":"1db0dc60-715f-4b1a-9125-b374a52959b9"}
-[2026-10-26 06:33:05] local.WARNING: ai.call {"status":"error","error":"ai_timeout","tone":"formal","latency_ms":30012} {"request_id":"7f3c2a9e-4b1d-4e8a-9c55-0d2f6a1b8e74"}
+[2026-10-26 11:11:52] local.INFO: ai.call {"status":"ok","model":"llama3.2","tone":"apologetic","latency_ms":2746,"input_tokens":330,"output_tokens":138} {"request_id":"aea89447-c6b5-42bd-8103-975e043610a7"}
+[2026-10-26 07:32:44] local.WARNING: ai.call {"status":"error","error":"ai_invalid_response","tone":"friendly","latency_ms":1562} {"request_id":"postman-demo-0001"}
 ```
 
 - Failed calls are logged too, with the error code and the time spent before the failure. This includes calls where the model answered but the reply was unusable, such as an empty body (`"error":"ai_invalid_response"`).
@@ -183,9 +194,9 @@ Accepting only these five values (validated with a PHP enum) keeps the output pr
 
 **5. User input is treated as data.** The purpose, name and tone go inside XML-style tags (`<purpose>`, `<recipient_name>`, `<tone>`), and the system prompt tells the model never to follow instructions inside them. Validation also rejects line breaks and angle brackets in `recipient_name`, so a name can't close its tag and inject text.
 
-**6. Structured output.** The request includes a JSON Schema (`output_config.format`) with exactly two fields, `subject` and `body`. The API constrains the model to that shape, so there's no free text to parse. The service still rejects an empty subject or body with a 502.
+**6. Structured output.** The request includes a JSON Schema with exactly two fields, `subject` and `body` (Ollama's `format` field, or Claude's `output_config.format`). The model is constrained to that shape, so there's no free text to parse. The service still rejects an empty subject or body with a 502; llama3.2 produced one in testing.
 
-**7. Settings.**
+**7. One prompt for both models.** Ollama (default) and Claude receive exactly the same system prompt, user prompt and schema, so you can compare them directly by changing `AI_DRIVER`. Claude-only settings:
 - Effort is `low`. A 150-word email doesn't need long reasoning, and low effort keeps response times down.
 - The request opts into Anthropic's server-side refusal fallback (`fallbacks: "default"`), so if the model declines, the API retries on a fallback model instead of failing.
 
@@ -205,8 +216,8 @@ app/
     ├── EmailTemplateService.php             Calls the AI, times and logs the call
     ├── EmailTemplate.php                    Result object
     └── Ai/
+        ├── OllamaClient.php                 Local model through Ollama's HTTP API (default)
         ├── ClaudeClient.php                 Anthropic SDK implementation
-        ├── OllamaClient.php                 Local model through Ollama's HTTP API
         ├── FakeAiClient.php                 Offline implementation for tests and demos
         └── AiResult.php
 config/ai.php                                AI settings, read from .env
@@ -214,7 +225,7 @@ config/logging.php                           "ai" log channel → storage/logs/a
 routes/api.php                               POST /api/email-templates
 ```
 
-The controller only validates input and returns JSON. The service holds the logic and depends on the `AiClient` interface rather than on Anthropic directly. That is how the Ollama driver was added: one new class and one line in `AppServiceProvider`, with no change to the service, controller, prompt or logging.
+The controller only validates input and returns JSON. The service holds the logic and depends on the `AiClient` interface rather than on any one provider. Switching between Ollama and Claude is a config change, and adding a provider is one new class plus one line in `AppServiceProvider`, with no change to the service, controller, prompt or logging.
 
 ## Tests
 
@@ -222,7 +233,7 @@ The controller only validates input and returns JSON. The service holds the logi
 php artisan test
 ```
 
-The tests use the fake driver, so they never call the real API and need no key. They cover:
+The tests use the fake driver, so they need neither Ollama nor an API key. They cover:
 - the response shape and headers;
 - the prompt's content;
 - the log line for successful and failed AI calls (status, tone, tokens, latency and request ID);

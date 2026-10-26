@@ -121,13 +121,19 @@ class GenerateEmailTest extends TestCase
         $this->assertArrayHasKey('latency_ms', $records[0]->context);
     }
 
-    public function test_empty_ai_output_returns_502(): void
+    public function test_empty_ai_output_returns_502_and_is_logged_as_an_error(): void
     {
         $this->fakeAi(['subject' => '', 'body' => 'B']);
 
         $this->postJson('/api/email-templates', self::VALID_INPUT)
             ->assertStatus(502)
             ->assertJson(['error' => 'ai_invalid_response']);
+
+        $records = $this->aiLogRecords();
+        $this->assertCount(1, $records);
+        $this->assertSame('WARNING', $records[0]->level->getName());
+        $this->assertSame('error', $records[0]->context['status']);
+        $this->assertSame('ai_invalid_response', $records[0]->context['error']);
     }
 
     public function test_all_fields_are_required(): void

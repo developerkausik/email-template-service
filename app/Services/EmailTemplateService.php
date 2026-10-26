@@ -22,6 +22,14 @@ class EmailTemplateService
                 EmailPrompt::user($purpose, $recipientName, $tone),
                 EmailPrompt::schema(),
             );
+
+            $subject = trim((string) ($result->data['subject'] ?? ''));
+            $body = trim((string) ($result->data['body'] ?? ''));
+
+            // A reply we cannot use counts as a failed call, so it is logged as one.
+            if ($subject === '' || $body === '') {
+                throw AiServiceException::invalidResponse('The model returned an empty subject or body.');
+            }
         } catch (AiServiceException $e) {
             Log::channel('ai')->warning('ai.call', [
                 'status' => 'error',
@@ -43,13 +51,6 @@ class EmailTemplateService
             'input_tokens' => $result->inputTokens,
             'output_tokens' => $result->outputTokens,
         ]);
-
-        $subject = trim((string) ($result->data['subject'] ?? ''));
-        $body = trim((string) ($result->data['body'] ?? ''));
-
-        if ($subject === '' || $body === '') {
-            throw AiServiceException::invalidResponse('The model returned an empty subject or body.');
-        }
 
         return new EmailTemplate($subject, $body, $tone, $result->model, $latencyMs);
     }

@@ -1,0 +1,96 @@
+{
+  "info": {
+    "name": "Email Template Service",
+    "description": "POST /api/email-templates examples. Set baseUrl to where the service is running.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://127.0.0.1:8000" }
+  ],
+  "item": [
+    {
+      "name": "Apologetic: shipping delay",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "application/json" }
+        ],
+        "url": "{{baseUrl}}/api/email-templates",
+        "body": { "mode": "raw", "raw": "{\n  \"purpose\": \"Inform about a 2-day shipping delay\",\n  \"recipient_name\": \"Priya\",\n  \"tone\": \"apologetic\"\n}" }
+      }
+    },
+    {
+      "name": "Friendly: welcome",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "application/json" }
+        ],
+        "url": "{{baseUrl}}/api/email-templates",
+        "body": { "mode": "raw", "raw": "{\n  \"purpose\": \"Welcome a new customer who just created an account\",\n  \"recipient_name\": \"Rahul\",\n  \"tone\": \"friendly\"\n}" }
+      }
+    },
+    {
+      "name": "Formal: invoice reminder",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "application/json" }
+        ],
+        "url": "{{baseUrl}}/api/email-templates",
+        "body": { "mode": "raw", "raw": "{\n  \"purpose\": \"Remind the customer that their invoice is due in 5 days\",\n  \"recipient_name\": \"Ms. Banerjee\",\n  \"tone\": \"formal\"\n}" }
+      }
+    },
+    {
+      "name": "Persuasive: plan upgrade",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "application/json" }
+        ],
+        "url": "{{baseUrl}}/api/email-templates",
+        "body": { "mode": "raw", "raw": "{\n  \"purpose\": \"Encourage the customer to upgrade to the annual plan and save 20%\",\n  \"recipient_name\": \"Ankit\",\n  \"tone\": \"persuasive\"\n}" }
+      }
+    },
+    {
+      "name": "Neutral: maintenance notice",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "application/json" }
+        ],
+        "url": "{{baseUrl}}/api/email-templates",
+        "body": { "mode": "raw", "raw": "{\n  \"purpose\": \"Notify about scheduled maintenance this Sunday from 2 to 4 AM\",\n  \"recipient_name\": \"Sneha\",\n  \"tone\": \"neutral\"\n}" }
+      }
+    },
+    {
+      "name": "Validation error: unknown tone",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "application/json" }
+        ],
+        "url": "{{baseUrl}}/api/email-templates",
+        "body": { "mode": "raw", "raw": "{\n  \"purpose\": \"Say thanks for the order\",\n  \"recipient_name\": \"Priya\",\n  \"tone\": \"angry\"\n}" }
+      }
+    },
+    {
+      "name": "Validation error: missing fields",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "application/json" }
+        ],
+        "url": "{{baseUrl}}/api/email-templates",
+        "body": { "mode": "raw", "raw": "{}" }
+      }
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+$kind: http-request
+url: "{{baseUrl}}/api/email-templates"
+method: POST
+headers:
+  Content-Type: application/json
+  Accept: application/json
+body:
+  type: text
+  content: |-
+    {
+      "purpose": "Say thanks for the order",
+      "recipient_name": "Priya",
+      "tone": "angry"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Status is 422', () => pm.response.to.have.status(422));
+      pm.test('Message lists the allowed tones', () => {
+          pm.expect(pm.response.json().errors.tone[0]).to.eql('The tone must be one of: formal, friendly, apologetic, persuasive, neutral.');
+      });
+    language: text/javascript
+order: 2000

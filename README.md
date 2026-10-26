@@ -23,15 +23,25 @@ Then set the AI options in `.env`:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `AI_DRIVER` | `claude` | `claude` calls the Anthropic API. `fake` returns a canned email, so you can run the service without a key. |
+| `AI_DRIVER` | `claude` | `claude` calls the Anthropic API. `ollama` runs a local model, free and offline. `fake` returns a canned email without calling any model. |
 | `ANTHROPIC_API_KEY` | (empty) | Your key from [console.anthropic.com](https://console.anthropic.com). Required when `AI_DRIVER=claude`. |
 | `AI_MODEL` | `claude-opus-5-5` | Any Claude model ID. |
 | `AI_EFFORT` | `low` | How much the model reasons before answering (`low`, `medium`, `high`). |
 | `AI_MAX_TOKENS` | `2048` | Output token limit per request. |
 | `AI_TIMEOUT` | `30` | Seconds before an AI request is abandoned. |
 | `AI_MAX_RETRIES` | `2` | The SDK retries rate limits, timeouts and 5xx errors this many times. |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server address. Used when `AI_DRIVER=ollama`. |
+| `OLLAMA_MODEL` | `llama3.2` | Any model you have pulled in Ollama. |
+| `OLLAMA_TIMEOUT` | `120` | Seconds to wait. Local models are slower, especially on the first call while the model loads. |
 
 The API key is read only in [`config/ai.php`](config/ai.php); application code reads `config('ai.*')` and never calls `env()`. `.env` is gitignored, and `.env.example` holds the variable names without values. If the key is missing, the API returns a clear 503 rather than failing on the first AI call.
+
+### Running without an API key (Ollama)
+
+1. Install [Ollama](https://ollama.com/download) and download a model: `ollama pull llama3.2`
+2. In `.env`, set `AI_DRIVER=ollama`.
+
+Nothing else changes: the same prompt and JSON schema are sent to the local model, and calls are logged in the same way. A small local model writes less polished emails and follows the length and placeholder rules less reliably than Claude, so use it to try the service for free, not as a measure of quality.
 
 Run it:
 
@@ -88,11 +98,30 @@ Every error is JSON with a `message`. AI failures also carry an `error` code.
 |---|---|---|
 | 422 | A field is missing or invalid | `{"message": "The tone must be one of: formal, friendly, apologetic, persuasive, neutral.", "errors": {"tone": ["..."]}}` |
 | 429 | More than 30 requests per minute from one client | `{"message": "Too Many Attempts."}` |
-| 502 | The AI provider returned an error, or an unusable response | `{"message": "AI service returned an error.", "error": "ai_error"}` |
+| 502 | The AI provider returned an error or an unusable response, Ollama is not running, or the Ollama model is not installed | `{"message": "AI service returned an error.", "error": "ai_error"}` |
 | 503 | The AI provider is rate-limiting us (sends `Retry-After`), or no API key is configured | `{"message": "AI service is not configured. Set ANTHROPIC_API_KEY or use AI_DRIVER=fake.", "error": "ai_not_configured"}` |
 | 504 | The AI provider did not answer within `AI_TIMEOUT` | `{"message": "AI service timed out.", "error": "ai_timeout"}` |
 
-A Postman collection with one request per tone and the error cases is in [`postman/email-template-service.postman_collection.json`](postman/email-template-service.postman_collection.json).
+### Postman collection
+
+[`postman/email-template-service.postman_collection.json`](postman/email-template-service.postman_collection.json) has three folders:
+- **Generate:** one request per tone, plus one that sends its own `X-Request-Id` so you can find it in `ai.log`.
+- **Validation errors:** requests that must return 422.
+- **Diagnostics:** checks that the service is up, and that Ollama is running and has the model.
+
+Each request has automatic checks:
+- the response shape and the requested tone;
+- that `meta.request_id` matches the `X-Request-Id` header;
+- that `X-Response-Time` is present;
+- two of the prompt's rules: the body greets the recipient by name, and is 80–150 words long.
+
+Import the file into Postman, or run it from the command line:
+
+```bash
+npx newman run postman/email-template-service.postman_collection.json
+```
+
+The prompt-rule checks measure the model's output, not the service. With Ollama's llama3.2, the emails usually come out under 80 words, so the word-count check fails.
 
 ## Response-time logs
 
@@ -103,7 +132,7 @@ Each AI call writes one line to `storage/logs/ai.log`. The service takes a times
 [2026-10-26 06:33:05] local.WARNING: ai.call {"status":"error","error":"ai_timeout","tone":"formal","latency_ms":30012} {"request_id":"7f3c2a9e-4b1d-4e8a-9c55-0d2f6a1b8e74"}
 ```
 
-- Failed calls are logged too, with the error code and the time spent before the failure.
+- Failed calls are logged too, with the error code and the time spent before the failure. This includes calls where the model answered but the reply was unusable, such as an empty body (`"error":"ai_invalid_response"`).
 - The `request_id` matches the `X-Request-Id` header and `meta.request_id`, so a slow response can be traced to its log line.
 - `latency_ms` in the log equals `meta.ai_latency_ms` in the response. `X-Response-Time` is larger, because it also covers validation and the rest of the request.
 
@@ -158,6 +187,7 @@ app/
     ├── EmailTemplate.php                    Result object
     └── Ai/
         ├── ClaudeClient.php                 Anthropic SDK implementation
+        ├── OllamaClient.php                 Local model through Ollama's HTTP API
         ├── FakeAiClient.php                 Offline implementation for tests and demos
         └── AiResult.php
 config/ai.php                                AI settings, read from .env
@@ -165,7 +195,7 @@ config/logging.php                           "ai" log channel → storage/logs/a
 routes/api.php                               POST /api/email-templates
 ```
 
-The controller only validates input and returns JSON. The service holds the logic and depends on the `AiClient` interface rather than on Anthropic directly, so the provider can be swapped or faked without changing the service.
+The controller only validates input and returns JSON. The service holds the logic and depends on the `AiClient` interface rather than on Anthropic directly. That is how the Ollama driver was added: one new class and one line in `AppServiceProvider`, with no change to the service, controller, prompt or logging.
 
 ## Tests
 
@@ -179,4 +209,5 @@ The tests use the fake driver, so they never call the real API and need no key. 
 - the log line for successful and failed AI calls (status, tone, tokens, latency and request ID);
 - validation, including tone values and injection attempts in the name;
 - request-ID reuse;
-- error mapping.
+- error mapping;
+- the Ollama driver against faked HTTP responses: request body, reply and token parsing, Ollama not running, timeout, missing model and invalid JSON.

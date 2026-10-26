@@ -1,0 +1,18 @@
+$kind: http-request
+url: "{{baseUrl}}/api/email-templates"
+method: POST
+headers:
+  Content-Type: application/json
+  Accept: application/json
+body:
+  type: text
+  content: "{}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Status is 422', () => pm.response.to.have.status(422));
+      pm.test('All three fields are reported', () => {
+          pm.expect(pm.response.json().errors).to.have.all.keys('purpose', 'recipient_name', 'tone');
+      });
+    language: text/javascript
+order: 1000

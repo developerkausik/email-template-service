@@ -1,0 +1,20 @@
+$kind: http-request
+name: "Friendly: welcome"
+url: "{{baseUrl}}/api/email-templates"
+method: POST
+headers:
+  Content-Type: application/json
+  Accept: application/json
+body:
+  type: text
+  content: |-
+    {
+      "purpose": "Welcome a new customer who just created an account",
+      "recipient_name": "Rahul",
+      "tone": "friendly"
+    }
+scripts:
+  - type: afterResponse
+    code: pm.test('Status is 200', () => pm.response.to.have.status(200));
+    language: text/javascript
+order: 2000
